@@ -1,4 +1,4 @@
-const apiKey='AIzaSyDXYrUT_BamNWCV-hv1Fz4Bw8A7SFM2M0Q'
+const apiKey=''
 import {
     GoogleGenerativeAI,
     HarmCategory,
