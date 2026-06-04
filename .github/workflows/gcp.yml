@@ -1,0 +1,47 @@
+name: Deploy to GCP
+
+on:
+  push:
+    branches: [ master ]
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Authenticate to Google Cloud
+      uses: google-github-actions/auth@v2
+      with:
+        credentials_json: '${{ secrets.GCP_CREDENTIALS }}'
+
+    - name: Set up Cloud SDK
+      uses: google-github-actions/setup-gcloud@v2
+
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '20'
+    - name: Install dependencies
+      run: npm install
+    - name: Build
+      run: npm run build
+
+    - name: Create and Configure GCS Bucket
+      run: |
+        gcloud storage buckets create gs://myreactgcptest-477a86d7 --location=us-central1 --project=${{ secrets.GCP_PROJECT_ID }} || true
+        gcloud storage buckets update gs://myreactgcptest-477a86d7 --web-main-page-suffix=index.html --web-error-page=index.html
+        gcloud storage buckets add-iam-policy-binding gs://myreactgcptest-477a86d7 --member=allUsers --role=roles/storage.objectViewer
+
+    - name: Deploy to GCS
+      run: gcloud storage rsync . gs://myreactgcptest-477a86d7 --recursive --delete-unmatched-destination-objects
+
+    - name: Notify Success
+      if: success()
+      run: |
+        curl -X POST https://rebuttal-slashing-glove.ngrok-free.dev/api/UnifiedDeployment/webhook/github -H "Content-Type: application/json" -d '{"deploymentId": "6a21cc0e682df95402b8adb1", "status": "success"}'
+
+    - name: Notify Failure
+      if: failure()
+      run: |
+        curl -X POST https://rebuttal-slashing-glove.ngrok-free.dev/api/UnifiedDeployment/webhook/github -H "Content-Type: application/json" -d '{"deploymentId": "6a21cc0e682df95402b8adb1", "status": "failed"}'
