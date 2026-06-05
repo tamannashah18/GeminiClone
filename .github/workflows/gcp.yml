@@ -21,7 +21,7 @@ jobs:
     - name: Setup Node.js
       uses: actions/setup-node@v4
       with:
-        node-version: '20'
+        node-version: '18'
     - name: Install dependencies
       run: npm install
     - name: Build
@@ -29,19 +29,19 @@ jobs:
 
     - name: Create and Configure GCS Bucket
       run: |
-        gcloud storage buckets create gs://myreactgcptest-477a86d7 --location=us-central1 --project=${{ secrets.GCP_PROJECT_ID }} || true
-        gcloud storage buckets update gs://myreactgcptest-477a86d7 --web-main-page-suffix=index.html --web-error-page=index.html
-        gcloud storage buckets add-iam-policy-binding gs://myreactgcptest-477a86d7 --member=allUsers --role=roles/storage.objectViewer
+        gcloud storage buckets create gs://geminiclone-e6603622 --location=us-east-1 --project=${{ secrets.GCP_PROJECT_ID }} || true
+        gcloud storage buckets update gs://geminiclone-e6603622 --web-main-page-suffix=index.html --web-error-page=index.html
+        gcloud storage buckets add-iam-policy-binding gs://geminiclone-e6603622 --member=allUsers --role=roles/storage.objectViewer
 
     - name: Deploy to GCS
-      run: gcloud storage rsync ./dist gs://myreactgcptest-477a86d7 --recursive --delete-unmatched-destination-objects
+      run: gcloud storage rsync ./dist gs://geminiclone-e6603622 --recursive --delete-unmatched-destination-objects
 
     - name: Notify Success
       if: success()
       run: |
-        curl -X POST https://rebuttal-slashing-glove.ngrok-free.dev/api/UnifiedDeployment/webhook/github -H "Content-Type: application/json" -d '{"deploymentId": "6a21cea86a57b522e90edf10", "status": "success"}'
+        curl -X POST https://rebuttal-slashing-glove.ngrok-free.dev/api/UnifiedDeployment/webhook/github -H "Content-Type: application/json" -d '{"deploymentId": "6a22e9848c672e6d0f5a1026", "status": "success"}'
 
     - name: Notify Failure
       if: failure()
       run: |
-        curl -X POST https://rebuttal-slashing-glove.ngrok-free.dev/api/UnifiedDeployment/webhook/github -H "Content-Type: application/json" -d '{"deploymentId": "6a21cea86a57b522e90edf10", "status": "failed"}'
+        curl -X POST https://rebuttal-slashing-glove.ngrok-free.dev/api/UnifiedDeployment/webhook/github -H "Content-Type: application/json" -d '{"deploymentId": "6a22e9848c672e6d0f5a1026", "status": "failed"}'
