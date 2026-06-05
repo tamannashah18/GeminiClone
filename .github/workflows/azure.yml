@@ -1,0 +1,72 @@
+name: Deploy to Azure
+
+on:
+  push:
+    branches: [ master ]
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Azure Login
+      uses: azure/login@v2
+      with:
+        creds: ${{ secrets.AZURE_CREDENTIALS }}
+
+    - name: Verify Azure Login
+      run: |
+        az account show || (echo '❌ Azure login failed. Check that AZURE_CREDENTIALS secret is set correctly in repo Settings → Secrets → Actions.' && exit 1)
+
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '20'
+    - name: Install dependencies
+      run: npm install
+    - name: Build
+      run: npm run build
+
+    - name: Create and Configure Azure Storage Account
+      run: |
+        FULL_SUB_ID=$(az account show --query id -o tsv | tr -d '[:space:]')
+        az account set --subscription $FULL_SUB_ID
+        az provider register --namespace Microsoft.Storage --subscription $FULL_SUB_ID || true
+        EXISTING_LOCATION=$(az group show --name reactazuretest09701d-rg --query location -o tsv 2>/dev/null | tr -d '[:space:]' || echo '')
+        LOCATION=${EXISTING_LOCATION:-eastus}
+        SUB_ID=$(echo $FULL_SUB_ID | tr -d '-')
+        STORAGE_NAME="reactazuretest${SUB_ID:0:8}"
+        STORAGE_NAME="${STORAGE_NAME:0:24}"
+        echo "AZURE_STORAGE_NAME=$STORAGE_NAME" >> $GITHUB_ENV
+        echo "Using storage account: $STORAGE_NAME in location: $LOCATION"
+        az group create --name reactazuretest09701d-rg --location $LOCATION --subscription $FULL_SUB_ID || true
+        ACCT_EXISTS=$(az storage account show --name $STORAGE_NAME --resource-group reactazuretest09701d-rg --query name -o tsv 2>/dev/null | tr -d '[:space:]' || echo '')
+        if [ -z "$ACCT_EXISTS" ]; then
+          echo "Creating storage account $STORAGE_NAME..."
+          az storage account create --name $STORAGE_NAME --resource-group reactazuretest09701d-rg --location $LOCATION --sku Standard_LRS --allow-blob-public-access true --subscription $FULL_SUB_ID
+        else
+          echo "Storage account $STORAGE_NAME already exists, skipping creation."
+        fi
+        STORAGE_KEY=$(az storage account keys list --account-name $STORAGE_NAME --resource-group reactazuretest09701d-rg --query '[0].value' -o tsv | tr -d '[:space:]')
+        az storage blob service-properties update --account-name $STORAGE_NAME --account-key $STORAGE_KEY --static-website --404-document index.html --index-document index.html
+
+    - name: Upload to Azure Storage $web container
+      run: |
+        STORAGE_KEY=$(az storage account keys list --account-name ${{ env.AZURE_STORAGE_NAME }} --resource-group reactazuretest09701d-rg --query '[0].value' -o tsv | tr -d '[:space:]')
+        UPLOAD_DIR="dist"
+        if [ ! -d "$UPLOAD_DIR" ]; then
+          echo "⚠️ Directory '$UPLOAD_DIR' not found. Falling back to repository root (.)."
+          UPLOAD_DIR="."
+        fi
+        az storage blob upload-batch -d '$web' --account-name ${{ env.AZURE_STORAGE_NAME }} --account-key $STORAGE_KEY -s "$UPLOAD_DIR" --overwrite
+
+    - name: Notify Success
+      if: success()
+      run: |
+        curl -X POST https://rebuttal-slashing-glove.ngrok-free.dev/api/UnifiedDeployment/webhook/github -H "Content-Type: application/json" -d '{"deploymentId": "6a22e8728c672e6d0f5a1024", "status": "success"}'
+
+    - name: Notify Failure
+      if: failure()
+      run: |
+        curl -X POST https://rebuttal-slashing-glove.ngrok-free.dev/api/UnifiedDeployment/webhook/github -H "Content-Type: application/json" -d '{"deploymentId": "6a22e8728c672e6d0f5a1024", "status": "failed"}'
